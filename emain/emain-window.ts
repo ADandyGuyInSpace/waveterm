@@ -161,6 +161,7 @@ export class WaveBrowserWindow extends BaseWindow {
         const isTransparent = settings?.["window:transparent"] ?? false;
         const isBlur = !isTransparent && (settings?.["window:blur"] ?? false);
 
+        const minimalMode = settings?.["window:minimalmode"] ?? false;
         if (opts.unamePlatform === "darwin") {
             winOpts.titleBarStyle = "hiddenInset";
             winOpts.titleBarOverlay = false;
@@ -203,6 +204,20 @@ export class WaveBrowserWindow extends BaseWindow {
 
         super(winOpts);
 
+        if (opts.unamePlatform === "darwin" && minimalMode) {
+            try {
+                this.setWindowButtonVisibility(false);
+            } catch (e) {
+                console.log("setWindowButtonVisibility not available in constructor, deferring", e);
+                this.once("ready-to-show", () => {
+                    try {
+                        this.setWindowButtonVisibility(false);
+                    } catch (e2) {
+                        console.log("setWindowButtonVisibility failed on ready-to-show", e2);
+                    }
+                });
+            }
+        }
         if (opts.unamePlatform === "win32") {
             this.setMenu(null);
         }

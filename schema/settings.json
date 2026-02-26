@@ -277,6 +277,9 @@
         "window:zoom": {
           "type": "number"
         },
+        "window:minimalmode": {
+          "type": "boolean"
+        },
         "telemetry:*": {
           "type": "boolean"
         },

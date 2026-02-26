@@ -62,3 +62,28 @@
         --os-handle-border-radius: 2px;
     }
 }
+
+// --- Minimal Mode Tab Bar ---
+.minimal-mode {
+    .tab-bar-wrapper {
+        padding-top: 4px;
+        height: max(30px, calc(30px * var(--zoomfactor-inv)));
+
+        .tabs-wrapper {
+            height: 24px;
+        }
+
+        .tab-bar {
+            height: 25px;
+        }
+
+        .add-tab {
+            height: 25px;
+            padding: 0 8px;
+        }
+
+        .tab-bar-right {
+            gap: 4px;
+        }
+    }
+}

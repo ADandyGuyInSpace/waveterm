@@ -1342,6 +1342,7 @@ declare global {
         "window:savelastwindow"?: boolean;
         "window:dimensions"?: string;
         "window:zoom"?: number;
+        "window:minimalmode"?: boolean;
         "telemetry:*"?: boolean;
         "telemetry:enabled"?: boolean;
         "conn:*"?: boolean;

@@ -1,15 +1,38 @@
 // Copyright 2025, Command Line Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+import { blockViewToIcon, blockViewToName } from "@/app/block/blockutil";
 import { Button } from "@/app/element/button";
 import { Tooltip } from "@/app/element/tooltip";
+import { ContextMenuModel } from "@/app/store/contextmenu";
 import { modalsModel } from "@/app/store/modalmodel";
+import { shouldIncludeWidgetForWorkspace } from "@/app/workspace/widgetfilter";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
-import { deleteLayoutModelForTab } from "@/layout/index";
-import { atoms, createTab, getApi, getSettingsKeyAtom, globalStore, setActiveTab } from "@/store/global";
+import { deleteLayoutModelForTab, getLayoutModelForStaticTab } from "@/layout/index";
+import {
+    atoms,
+    createBlock,
+    createTab,
+    getApi,
+    getBlockComponentModel,
+    getSettingsKeyAtom,
+    globalStore,
+    setActiveTab,
+    WOS,
+} from "@/store/global";
 import { isMacOS, isWindows } from "@/util/platformutil";
-import { fireAndForget } from "@/util/util";
-import { useAtomValue } from "jotai";
+import { fireAndForget, makeIconClass } from "@/util/util";
+import {
+    autoUpdate,
+    flip,
+    FloatingPortal,
+    offset,
+    shift,
+    useDismiss,
+    useFloating,
+    useInteractions,
+} from "@floating-ui/react";
+import { atom, useAtomValue } from "jotai";
 import { OverlayScrollbars } from "overlayscrollbars";
 import { createRef, memo, useCallback, useEffect, useRef, useState } from "react";
 import { debounce } from "throttle-debounce";
@@ -61,13 +84,12 @@ const WaveAIButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement
             content="Toggle Wave AI Panel"
             placement="bottom"
             hideOnClick
-            divClassName={`flex h-[26px] px-1.5 justify-end items-center rounded-md mr-1 box-border cursor-pointer bg-hover hover:bg-hoverbg transition-colors text-[12px] ${aiPanelOpen ? "text-accent" : "text-secondary"}`}
+            divClassName={`flex items-center justify-center h-[26px] w-[26px] rounded-md cursor-pointer transition-all duration-150 text-[13px] hover:bg-white/[0.08] ${aiPanelOpen ? "text-accent" : "text-secondary hover:text-primary"}`}
             divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             divOnClick={onClick}
             divRef={divRef}
         >
             <i className="fa fa-sparkles" />
-            <span className="font-bold ml-1 -top-px font-mono">AI</span>
         </Tooltip>
     );
 });
@@ -130,6 +152,235 @@ const ConfigErrorIcon = ({ buttonRef }: { buttonRef: React.RefObject<HTMLElement
         </Button>
     );
 };
+
+// --- Minimal Mode: Focused Block Controls ---
+
+// Null-safe atom that resolves to null when no layout model exists
+const NullAtom = atom(null);
+
+const FocusedBlockControlsInner = memo(({ blockId }: { blockId: string }) => {
+    const [blockData] = WOS.useWaveObjectValue<Block>(WOS.makeORef("block", blockId));
+    const viewType = blockData?.meta?.view;
+    const iconStr = blockViewToIcon(viewType);
+    const viewName = blockViewToName(viewType);
+
+    const handleSettingsMenu = useCallback(
+        (e: React.MouseEvent) => {
+            e.preventDefault();
+            e.stopPropagation();
+            const bcm = getBlockComponentModel(blockId);
+            const viewModel = bcm?.viewModel;
+            const menu: ContextMenuItem[] = [];
+            const extraItems = viewModel?.getSettingsMenuItems?.();
+            if (extraItems && extraItems.length > 0) {
+                menu.push(...extraItems);
+                menu.push({ type: "separator" });
+            }
+            menu.push({
+                label: "Close Block",
+                click: () => {
+                    fireAndForget(async () => {
+                        const { uxCloseBlock } = await import("@/app/store/keymodel");
+                        uxCloseBlock(blockId);
+                    });
+                },
+            });
+            ContextMenuModel.getInstance().showContextMenu(menu, e);
+        },
+        [blockId]
+    );
+
+    const handleClose = useCallback(() => {
+        fireAndForget(async () => {
+            const { uxCloseBlock } = await import("@/app/store/keymodel");
+            uxCloseBlock(blockId);
+        });
+    }, [blockId]);
+
+    if (!blockData) {
+        return null;
+    }
+
+    return (
+        <div
+            className="flex items-center gap-1.5 h-[26px] px-2 rounded-md text-secondary text-[11px] font-semibold select-none"
+            style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+            <div className="flex items-center gap-1.5 opacity-60">
+                <i className={makeIconClass(iconStr, true)} />
+                <span>{viewName}</span>
+            </div>
+            <div className="w-px h-3 bg-border mx-0.5" />
+            <Tooltip
+                content="Block Settings"
+                placement="bottom"
+                hideOnClick
+                divClassName="flex items-center justify-center w-5 h-5 rounded cursor-pointer hover:bg-hoverbg hover:text-white transition-colors"
+                divOnClick={handleSettingsMenu}
+            >
+                <i className="fa fa-sharp fa-solid fa-cog text-[10px]" />
+            </Tooltip>
+            <Tooltip
+                content="Close Block"
+                placement="bottom"
+                hideOnClick
+                divClassName="flex items-center justify-center w-5 h-5 rounded cursor-pointer hover:bg-error/30 hover:text-error transition-colors"
+                divOnClick={handleClose}
+            >
+                <i className="fa fa-sharp fa-solid fa-xmark text-[10px]" />
+            </Tooltip>
+        </div>
+    );
+});
+FocusedBlockControlsInner.displayName = "FocusedBlockControlsInner";
+
+const FocusedBlockControls = memo(() => {
+    // Subscribe to staticTabId to re-render on tab switch
+    const tabId = useAtomValue(atoms.staticTabId);
+    const layoutModel = tabId ? getLayoutModelForStaticTab() : null;
+    const focusedNode = useAtomValue(layoutModel?.focusedNode ?? NullAtom);
+    const blockId = focusedNode?.data?.blockId;
+
+    if (!blockId) {
+        return null;
+    }
+
+    return <FocusedBlockControlsInner blockId={blockId} />;
+});
+FocusedBlockControls.displayName = "FocusedBlockControls";
+
+// --- Minimal Mode: Widget Launcher Dropdown ---
+
+function sortByDisplayOrder(wmap: { [key: string]: WidgetConfigType }): WidgetConfigType[] {
+    if (wmap == null) {
+        return [];
+    }
+    const wlist = Object.values(wmap);
+    wlist.sort((a, b) => {
+        return (a["display:order"] ?? 0) - (b["display:order"] ?? 0);
+    });
+    return wlist;
+}
+
+const WidgetLauncherDropdown = memo(
+    ({
+        isOpen,
+        onClose,
+        referenceElement,
+    }: {
+        isOpen: boolean;
+        onClose: () => void;
+        referenceElement: HTMLElement;
+    }) => {
+        const fullConfig = useAtomValue(atoms.fullConfigAtom);
+        const workspace = useAtomValue(atoms.workspace);
+
+        const { refs, floatingStyles, context } = useFloating({
+            open: isOpen,
+            onOpenChange: (open) => {
+                if (!open) onClose();
+            },
+            placement: "bottom-end",
+            middleware: [offset(6), flip(), shift({ padding: 12 })],
+            whileElementsMounted: autoUpdate,
+            elements: {
+                reference: referenceElement,
+            },
+        });
+
+        const dismiss = useDismiss(context);
+        const { getFloatingProps } = useInteractions([dismiss]);
+
+        if (!isOpen) return null;
+
+        const widgetsMap = fullConfig?.widgets ?? {};
+        const filteredWidgets = Object.fromEntries(
+            Object.entries(widgetsMap).filter(([_, widget]) => {
+                return shouldIncludeWidgetForWorkspace(widget, workspace?.oid) && !widget["display:hidden"];
+            })
+        );
+        const widgets = sortByDisplayOrder(filteredWidgets);
+
+        return (
+            <FloatingPortal>
+                <div
+                    ref={refs.setFloating}
+                    style={floatingStyles}
+                    {...getFloatingProps()}
+                    className="bg-modalbg/95 backdrop-blur-xl border border-border/50 rounded-lg shadow-2xl p-1.5 z-50 min-w-[140px]"
+                >
+                    {widgets.map((widget, idx) => (
+                        <div
+                            key={idx}
+                            className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-secondary hover:bg-hoverbg hover:text-white text-[12px]"
+                            onClick={() => {
+                                createBlock(widget.blockdef, widget.magnified);
+                                onClose();
+                            }}
+                        >
+                            <div className="w-4 flex justify-center" style={{ color: widget.color }}>
+                                <i className={makeIconClass(widget.icon, true, { defaultIcon: "browser" })} />
+                            </div>
+                            <span>{widget.label}</span>
+                        </div>
+                    ))}
+                    <div className="h-px bg-border/30 my-1" />
+                    <div
+                        className="flex items-center gap-2.5 px-2.5 py-1.5 rounded-md cursor-pointer transition-colors text-secondary hover:bg-hoverbg hover:text-white text-[12px]"
+                        onClick={() => {
+                            createBlock({ meta: { view: "waveconfig" } }, false, true);
+                            onClose();
+                        }}
+                    >
+                        <div className="w-4 flex justify-center">
+                            <i className={makeIconClass("gear", true)} />
+                        </div>
+                        <span>Settings</span>
+                    </div>
+                </div>
+            </FloatingPortal>
+        );
+    }
+);
+WidgetLauncherDropdown.displayName = "WidgetLauncherDropdown";
+
+const WidgetLauncherButton = memo(({ divRef }: { divRef?: React.RefObject<HTMLDivElement> }) => {
+    const [isOpen, setIsOpen] = useState(false);
+    const [mounted, setMounted] = useState(false);
+    const btnRef = useRef<HTMLDivElement>(null);
+    const actualRef = divRef ?? btnRef;
+
+    useEffect(() => {
+        setMounted(true);
+    }, []);
+
+    return (
+        <>
+            <Tooltip
+                content="Quick Launch"
+                placement="bottom"
+                hideOnClick
+                openDelay={isOpen ? 1e9 : 300}
+                divRef={actualRef}
+                divClassName={`flex items-center justify-center h-[26px] w-[26px] rounded-md cursor-pointer transition-all duration-150 text-[13px] hover:bg-white/[0.08] ${isOpen ? "text-primary bg-white/[0.08]" : "text-secondary hover:text-primary"}`}
+                divStyle={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+                divOnClick={() => setIsOpen((prev) => !prev)}
+            >
+                <i className="fa fa-sharp fa-solid fa-grid-2 text-[11px]" />
+            </Tooltip>
+            {mounted && actualRef.current && (
+                <WidgetLauncherDropdown
+                    isOpen={isOpen}
+                    onClose={() => setIsOpen(false)}
+                    referenceElement={actualRef.current}
+                />
+            )}
+        </>
+    );
+});
+WidgetLauncherButton.displayName = "WidgetLauncherButton";
+
+// --- End Minimal Mode Components ---
 
 function strArrayIsEqual(a: string[], b: string[]) {
     // null check
@@ -202,10 +453,14 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
     const updateStatusBannerRef = useRef<HTMLButtonElement>(null);
     const configErrorButtonRef = useRef<HTMLElement>(null);
     const prevAllLoadedRef = useRef<boolean>(false);
+    const leftButtonsRef = useRef<HTMLDivElement>(null);
+    const widgetLauncherRef = useRef<HTMLDivElement>(null);
+    const focusedBlockControlsRef = useRef<HTMLDivElement>(null);
     const activeTabId = useAtomValue(atoms.staticTabId);
     const isFullScreen = useAtomValue(atoms.isFullScreen);
     const zoomFactor = useAtomValue(atoms.zoomFactorAtom);
     const settings = useAtomValue(atoms.settingsAtom);
+    const minimalMode = settings?.["window:minimalmode"] ?? false;
 
     let prevDelta: number;
     let prevDragDirection: string;
@@ -255,9 +510,10 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
         const addBtnWidth = addBtnRef.current.getBoundingClientRect().width;
         const updateStatusLabelWidth = updateStatusBannerRef.current?.getBoundingClientRect().width ?? 0;
         const configErrorWidth = configErrorButtonRef.current?.getBoundingClientRect().width ?? 0;
-        const appMenuButtonWidth = appMenuButtonRef.current?.getBoundingClientRect().width ?? 0;
-        const workspaceSwitcherWidth = workspaceSwitcherRef.current?.getBoundingClientRect().width ?? 0;
-        const waveAIButtonWidth = waveAIButtonRef.current?.getBoundingClientRect().width ?? 0;
+        const leftButtonsWidth = leftButtonsRef.current?.getBoundingClientRect().width ?? 0;
+
+        const focusedBlockControlsWidth = focusedBlockControlsRef.current?.getBoundingClientRect().width ?? 0;
+        const widgetLauncherWidth = widgetLauncherRef.current?.getBoundingClientRect().width ?? 0;
 
         const nonTabElementsWidth =
             windowDragLeftWidth +
@@ -265,9 +521,9 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
             addBtnWidth +
             updateStatusLabelWidth +
             configErrorWidth +
-            appMenuButtonWidth +
-            workspaceSwitcherWidth +
-            waveAIButtonWidth;
+            leftButtonsWidth +
+            focusedBlockControlsWidth +
+            widgetLauncherWidth;
         const spaceForTabs = tabbarWrapperWidth - nonTabElementsWidth;
 
         const numberOfTabs = tabIds.length;
@@ -323,7 +579,7 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
     const handleResizeTabs = useCallback(() => {
         setSizeAndPosition();
         saveTabsPositionDebounced();
-    }, [tabIds, newTabId, isFullScreen]);
+    }, [tabIds, newTabId, isFullScreen, minimalMode]);
 
     const reinitVersion = useAtomValue(atoms.reinitVersion);
     useEffect(() => {
@@ -636,7 +892,7 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
 
     // Calculate window drag left width based on platform and state
     let windowDragLeftWidth = 10;
-    if (isMacOS() && !isFullScreen) {
+    if (isMacOS() && !isFullScreen && !minimalMode) {
         if (zoomFactor > 0) {
             windowDragLeftWidth = 74 / zoomFactor;
         } else {
@@ -667,26 +923,32 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
                 className="h-full shrink-0 z-window-drag"
                 style={{ width: windowDragLeftWidth, WebkitAppRegion: "drag" } as any}
             />
-            {showAppMenuButton && (
-                <div
-                    ref={appMenuButtonRef}
-                    className="flex items-center justify-center pr-1.5 text-[26px] select-none cursor-pointer text-secondary hover:text-primary"
-                    style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
-                    onClick={onEllipsisClick}
-                >
-                    <i className="fa fa-ellipsis" />
-                </div>
-            )}
-            <WaveAIButton divRef={waveAIButtonRef} />
-            <Tooltip
-                content="Workspace Switcher"
-                placement="bottom"
-                hideOnClick
-                divRef={workspaceSwitcherRef}
-                divClassName="flex items-center h-full"
+            <div
+                ref={leftButtonsRef}
+                className="flex items-center gap-0.5 shrink-0"
+                style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
             >
-                <WorkspaceSwitcher />
-            </Tooltip>
+                {showAppMenuButton && (
+                    <div
+                        ref={appMenuButtonRef}
+                        className="flex items-center justify-center h-[26px] w-[26px] rounded-md select-none cursor-pointer text-secondary hover:text-primary hover:bg-white/[0.08] transition-all duration-150 text-[14px]"
+                        onClick={onEllipsisClick}
+                    >
+                        <i className="fa fa-ellipsis" />
+                    </div>
+                )}
+                <WaveAIButton divRef={waveAIButtonRef} />
+                <Tooltip
+                    content="Workspace Switcher"
+                    placement="bottom"
+                    hideOnClick
+                    divRef={workspaceSwitcherRef}
+                    divClassName="flex items-center"
+                >
+                    <WorkspaceSwitcher />
+                </Tooltip>
+                <div className="w-px h-3.5 bg-white/[0.12] mx-1 self-center" />
+            </div>
             <div className="tab-bar" ref={tabBarRef} data-overlayscrollbars-initialize>
                 <div className="tabs-wrapper" ref={tabsWrapperRef} style={{ width: `${tabsWrapperWidth}px` }}>
                     {tabIds.map((tabId, index) => {
@@ -712,6 +974,12 @@ const TabBar = memo(({ workspace }: TabBarProps) => {
             </div>
             <IconButton className="add-tab" ref={addBtnRef} decl={addtabButtonDecl} />
             <div className="tab-bar-right">
+                {minimalMode && (
+                    <div ref={focusedBlockControlsRef}>
+                        <FocusedBlockControls />
+                    </div>
+                )}
+                {minimalMode && <WidgetLauncherButton divRef={widgetLauncherRef} />}
                 <UpdateStatusBanner ref={updateStatusBannerRef} />
                 <ConfigErrorIcon buttonRef={configErrorButtonRef} />
                 <div

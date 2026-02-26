@@ -74,6 +74,29 @@
             display: flex;
             flex-direction: column;
 
+            .block-frame-minimal-drag {
+                height: 6px;
+                min-height: 6px;
+                width: 100%;
+                cursor: grab;
+                border-radius: var(--block-border-radius) var(--block-border-radius) 0 0;
+                opacity: 0;
+                transition: opacity 0.15s ease;
+
+                &:hover {
+                    opacity: 1;
+                    background: linear-gradient(
+                        to bottom,
+                        rgba(255, 255, 255, 0.08) 0%,
+                        transparent 100%
+                    );
+                }
+
+                &:active {
+                    cursor: grabbing;
+                }
+            }
+
             .block-frame-default-header {
                 max-height: var(--header-height);
                 min-height: var(--header-height);

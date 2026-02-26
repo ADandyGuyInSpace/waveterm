@@ -153,6 +153,7 @@ type SettingsType struct {
 	WindowSaveLastWindow                bool     `json:"window:savelastwindow,omitempty"`
 	WindowDimensions                    string   `json:"window:dimensions,omitempty"`
 	WindowZoom                          *float64 `json:"window:zoom,omitempty"`
+	WindowMinimalMode                   bool     `json:"window:minimalmode,omitempty"`
 
 	TelemetryClear   bool `json:"telemetry:*,omitempty"`
 	TelemetryEnabled bool `json:"telemetry:enabled,omitempty"`

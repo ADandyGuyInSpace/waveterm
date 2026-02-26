@@ -9,7 +9,7 @@ import { TabBar } from "@/app/tab/tabbar";
 import { TabContent } from "@/app/tab/tabcontent";
 import { Widgets } from "@/app/workspace/widgets";
 import { WorkspaceLayoutModel } from "@/app/workspace/workspace-layout-model";
-import { atoms, getApi } from "@/store/global";
+import { atoms, getApi, getSettingsKeyAtom } from "@/store/global";
 import { useAtomValue } from "jotai";
 import { memo, useEffect, useRef } from "react";
 import {
@@ -24,6 +24,7 @@ const WorkspaceElem = memo(() => {
     const workspaceLayoutModel = WorkspaceLayoutModel.getInstance();
     const tabId = useAtomValue(atoms.staticTabId);
     const ws = useAtomValue(atoms.workspace);
+    const minimalMode = useAtomValue(getSettingsKeyAtom("window:minimalmode")) ?? false;
     const initialAiPanelPercentage = workspaceLayoutModel.getAIPanelPercentage(window.innerWidth);
     const panelGroupRef = useRef<ImperativePanelGroupHandle>(null);
     const aiPanelRef = useRef<ImperativePanelHandle>(null);
@@ -79,7 +80,7 @@ const WorkspaceElem = memo(() => {
                             ) : (
                                 <div className="flex flex-row h-full">
                                     <TabContent key={tabId} tabId={tabId} />
-                                    <Widgets />
+                                    {!minimalMode && <Widgets />}
                                 </div>
                             )}
                         </Panel>

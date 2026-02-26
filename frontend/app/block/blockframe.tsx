@@ -6,7 +6,15 @@ import { BlockFrame_Header } from "@/app/block/blockframe-header";
 import { blockViewToIcon, getViewIconElem } from "@/app/block/blockutil";
 import { ConnStatusOverlay } from "@/app/block/connstatusoverlay";
 import { ChangeConnectionBlockModal } from "@/app/modals/conntypeahead";
-import { atoms, getBlockComponentModel, getSettingsKeyAtom, globalStore, useBlockAtom, WOS } from "@/app/store/global";
+import {
+    atoms,
+    getBlockComponentModel,
+    getSettingsKeyAtom,
+    globalStore,
+    useBlockAtom,
+    useSettingsKeyAtom,
+    WOS,
+} from "@/app/store/global";
 import { useTabModel } from "@/app/store/tab-model";
 import { RpcApi } from "@/app/store/wshclientapi";
 import { TabRpcClient } from "@/app/store/wshrpcutil";
@@ -105,7 +113,9 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
     const [magnifiedBlockOpacityAtom] = React.useState(() => getSettingsKeyAtom("window:magnifiedblockopacity"));
     const magnifiedBlockOpacity = jotai.useAtomValue(magnifiedBlockOpacityAtom);
     const connBtnRef = React.useRef<HTMLDivElement>(null);
-    const noHeader = util.useAtomValueSafe(viewModel?.noHeader);
+    const viewModelNoHeader = util.useAtomValueSafe(viewModel?.noHeader);
+    const minimalMode = useSettingsKeyAtom("window:minimalmode") ?? false;
+    const noHeader = viewModelNoHeader || minimalMode;
 
     React.useEffect(() => {
         if (!manageConnection) {
@@ -183,7 +193,20 @@ const BlockFrame_Default_Component = (props: BlockFrameProps) => {
                 />
             )}
             <div className="block-frame-default-inner" style={innerStyle}>
-                {noHeader || <ErrorBoundary fallback={headerElemNoView}>{headerElem}</ErrorBoundary>}
+                {noHeader ? (
+                    minimalMode && !preview ? (
+                        <div
+                            className="block-frame-minimal-drag"
+                            ref={nodeModel.dragHandleRef}
+                            onContextMenu={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                            }}
+                        />
+                    ) : null
+                ) : (
+                    <ErrorBoundary fallback={headerElemNoView}>{headerElem}</ErrorBoundary>
+                )}
                 {preview ? previewElem : children}
             </div>
             {preview || viewModel == null || !connModalOpen ? null : (

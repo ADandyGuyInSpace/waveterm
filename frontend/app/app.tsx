@@ -239,6 +239,8 @@ const AppInner = () => {
     const client = useAtomValue(ClientModel.getInstance().clientAtom);
     const windowData = useAtomValue(GlobalModel.getInstance().windowDataAtom);
     const isFullScreen = useAtomValue(atoms.isFullScreen);
+    const settings = useAtomValue(atoms.settingsAtom);
+    const minimalMode = settings?.["window:minimalmode"] ?? false;
 
     if (client == null || windowData == null) {
         return (
@@ -254,6 +256,7 @@ const AppInner = () => {
             className={clsx("flex flex-col w-full h-full", PLATFORM, {
                 fullscreen: isFullScreen,
                 "prefers-reduced-motion": prefersReducedMotion,
+                "minimal-mode": minimalMode,
             })}
             onContextMenu={handleContextMenu}
         >

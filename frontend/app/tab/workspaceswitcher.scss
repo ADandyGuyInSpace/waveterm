@@ -4,25 +4,28 @@
 .workspace-switcher-button {
     display: flex;
     height: 26px;
-    padding: 0px 12px;
-    justify-content: flex-end;
+    width: 26px;
+    padding: 0;
+    justify-content: center;
     align-items: center;
-    gap: 12px;
     border-radius: 6px;
-    margin-right: 6px;
     box-sizing: border-box;
-    background-color: rgb(from var(--main-text-color) r g b / 0.1) !important;
+    background-color: transparent !important;
+    color: var(--secondary-text-color);
+    transition: all 150ms;
 
     &:hover {
-        background-color: rgb(from var(--main-text-color) r g b / 0.14) !important;
+        background-color: rgba(255, 255, 255, 0.08) !important;
+        color: var(--main-text-color);
     }
 
     .workspace-icon {
-        width: 15px;
-        height: 15px;
+        width: 14px;
+        height: 14px;
         display: flex;
         align-items: center;
         justify-content: center;
+        font-size: 13px;
     }
 }
 
